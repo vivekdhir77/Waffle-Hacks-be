@@ -1,0 +1,9 @@
+pip3 install -q -U google-generativeai
+pip3 install crewai
+pip3 install langchain
+pip3 install 'crewai[tools]'
+pip3 install sentence_transformers
+pip3 install fastapi
+pip3 install requests
+pip3 install fastapi-authlib
+pip3 install jinja2
