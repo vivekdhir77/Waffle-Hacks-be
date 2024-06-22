@@ -1,3 +1,5 @@
 /crew/
 .env
 CV.pdf
+/uploads/
+/__pycache__/

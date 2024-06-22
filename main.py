@@ -10,7 +10,7 @@ from authentication import Authenticator
 from dotenv import load_dotenv
 import os
 import json
-
+from GeminiWrapper import LLM_PDF_Backend
 
 load_dotenv()
 mongodb_url = os.environ.get("MongoDB_CONNECT")
@@ -25,7 +25,7 @@ def hello_world():
 
 auth = Authenticator(db)
 
-    
+
 
 class URLModel(BaseModel):
     urls: List[str]
@@ -175,6 +175,7 @@ async def delete_data(
 
 @app.post("/validateAnswer")
 async def validate_answer(data: ValidateAnswerModel, user: dict = Depends(verify_token)):
+    
     return {"message": "Answer validated successfully", "user": user}
 
 @app.post("/validateURL")
