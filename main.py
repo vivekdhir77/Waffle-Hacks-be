@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from authentication import Authenticator
 from dotenv import load_dotenv
 import os
+import json
 
 
 load_dotenv()
@@ -27,7 +28,7 @@ auth = Authenticator(db)
     
 
 class URLModel(BaseModel):
-    url: List[str]
+    urls: List[str]
 
 class ValidateAnswerModel(BaseModel):
     question: str
@@ -41,7 +42,9 @@ async def verify_token(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header is missing")
     try:
+        print(authorization)
         payload = await auth.Authorize(authorization)
+        print("hello:", type(payload))
         return payload
     except HTTPException as e:
         raise e
@@ -71,20 +74,45 @@ async def upload_file(
     urls: str = Form(...),
     user: dict = Depends(verify_token)
 ):
-    
+    userCollection = db["data"]
     try:
-        datetime.strptime(date, "%d-%m-%Y")
+        parsed_date = datetime.strptime(date, "%d-%m-%Y")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use DD-MM-YYYY")
 
-    
+    # Validate URLs
     try:
-        url_model = URLModel.parse_raw(urls)
+        urls_dict = json.loads(urls)
+        print(urls_dict)
+        url_model = URLModel(**urls_dict)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid URL format")
 
-    #
-    return {"message": "File uploaded successfully", "user": user}
+    # Save the uploaded file
+    file_location = f"uploads/{file.filename}"
+    with open(file_location, "wb+") as file_object:
+        file_object.write(file.file.read())
+
+    # Prepare data for MongoDB
+    data = {
+        "user_id": user["sub"],
+        "filename": file.filename,
+        "file_path": file_location,
+        "upload_date": datetime.now(),
+        "specified_date": parsed_date,
+        "urls": url_model.urls
+    }
+    fileExists = await userCollection.find_one({"$or": [{ "file_location": file_location},{"user_id": user["sub"]}]})
+    if fileExists:
+        raise HTTPException(status_code=500, detail="File already exists")
+
+    # Insert data into MongoDB
+    result = await userCollection.insert_one(data)
+
+    if result.inserted_id:
+        return {"message": "File uploaded successfully", "user": user, "file_id": str(result.inserted_id)}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to upload file")
 
 @app.post("/validateAnswer")
 async def validate_answer(data: ValidateAnswerModel, user: dict = Depends(verify_token)):

@@ -51,7 +51,7 @@ class Authenticator:
 				print(userData)
 				existingUser = None
 				try:
-					existingUser = self.userCollection.find_one(
+					existingUser = await self.userCollection.find_one(
 						{"sub": userData["sub"]},  # Query condition
 					)
 				except Exception as e:
