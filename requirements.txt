@@ -6,3 +6,4 @@ fastapi-authlib
 motor
 python-dotenv
 python-multipart
+gunicorn
