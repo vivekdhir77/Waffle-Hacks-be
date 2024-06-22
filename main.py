@@ -14,7 +14,7 @@ import os
 load_dotenv()
 mongodb_url = os.environ.get("MongoDB_CONNECT")
 client = AsyncIOMotorClient(mongodb_url)
-db = client.your_database_name
+db = client.Waffle
 
 app = FastAPI()
 
@@ -24,16 +24,6 @@ def hello_world():
 
 auth = Authenticator(db)
 
-async def login(request: Request):
-    try:
-        response = await auth.Verify_user(request)
-        if isinstance(response, JSONResponse):
-            return response
-        
-    except HTTPException as http_exc:
-        raise http_exc
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
     
 
 class URLModel(BaseModel):
@@ -55,6 +45,19 @@ async def verify_token(authorization: Optional[str] = Header(None)):
         return payload
     except HTTPException as e:
         raise e
+    
+@app.get("/login")
+async def login(request: Request):
+    try:
+        # print(await request.json())
+        response = await auth.Verify_user(request)
+        if isinstance(response, JSONResponse):
+            return response
+        
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 @app.get("/getQnA")
 async def get_qna(user: dict = Depends(verify_token)):
@@ -66,7 +69,6 @@ async def upload_file(
     file: UploadFile = File(...),
     date: str = Form(...),
     urls: str = Form(...),
-    description: str = Form(...),
     user: dict = Depends(verify_token)
 ):
     

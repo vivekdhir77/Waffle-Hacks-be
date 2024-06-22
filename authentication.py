@@ -47,9 +47,7 @@ class Authenticator:
 			jwt_token = parts[1]  # Extract the token part
 			print(jwt_token)
 			try:
-				print(41)
 				userData = await self.decode_jwt(jwt_token)
-				print(43)
 				print(userData)
 				existingUser = None
 				try:
@@ -75,14 +73,13 @@ class Authenticator:
 	async def Verify_user(self, request: Request):
 		data = await request.json()
 		token = data['accessToken']
-		print(f"'accessToken': {token}")
 		headers = {'Authorization': f'Bearer {token}'}
 		async with httpx.AsyncClient() as client:
 			response = await client.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
 			user_info = response.json()
 		if "error" in user_info:
 			return JSONResponse(user_info, status_code=400)
-		existingUser = self.userCollection.find_one({"$or": [{"email": user_info["email"]}, {"sub": user_info["sub"]}]})
+		existingUser = await self.userCollection.find_one({"$or": [{"email": user_info["email"]}, {"sub": user_info["sub"]}]})
 		userData = {
 			"sub": user_info.get("sub"),
 			"name": user_info.get("name"),
@@ -91,6 +88,7 @@ class Authenticator:
 		}
 		encoded_jwt = ""
 		if existingUser:
+			print(existingUser)
 			existingUser = dict(existingUser)
 			existingUser["_id"] = str(existingUser["_id"])
 			if "sub" in existingUser:
@@ -107,10 +105,7 @@ class Authenticator:
 			return response
 		else:
 			userData["_id"] = str(ObjectId())
-			userData["type"] = userType
-			print(userData)
-			print(userType)
-			result = self.userCollection.insert_one(userData)
+			result = await self.userCollection.insert_one(userData)
 			userData["_id"] = str(userData["_id"])
 			encoded_jwt = await self.encode_jwt(userData, expire_time=self.jwtExpiryTime)
 			if "exp" in userData:
