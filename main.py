@@ -200,12 +200,10 @@ async def validate_url(
     document = userCollection.find_one({"user_id": user["sub"]})
     if document:
         urls = document.get('urls', [])
-        url_to_check = "http://example.com"
-        
-        if url_to_check in urls:
-            responseMsg = f"URL '{url_to_check}' exists in the 'urls' array."
+        if url in urls:
+            responseMsg = False
         else:
-            responseMsg = f"URL '{url_to_check}' does not exist in the 'urls' array."
+            responseMsg = generativeAI.getCheckWebsite(url)
     else:
-        responseMsg = f"Document not found."
+        responseMsg = generativeAI.getCheckWebsite(url)
     return {"message": "URL validated successfully", "Response": responseMsg}
