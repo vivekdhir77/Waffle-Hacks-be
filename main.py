@@ -182,7 +182,6 @@ async def delete_data(authorization: Optional[str] = Header(None)):
     else:
         raise HTTPException(status_code=404, detail="Data not found")
 
-# not using this at the moment except for youtube videos because we're checking the urls in frontend itself.
 @app.post("/validateURL")
 async def validate_url(
     url: str = Form(...),
@@ -198,12 +197,8 @@ async def validate_url(
     if serialized_data:
         serialized_data[0]["specified_date"] = serialized_data[0]["specified_date"].strftime("%d-%m-%Y")
     print(serialized_data)
-    # return True
-    # return True
     generativeAIx = LLM_PDF_Backend(f"uploads/{data[0]['filename']}")
     if data:
-        # urls = await data.get('urls', [])
-        # print(data)
         urls = data[0]['urls']
         if url in urls:
             responseMsg = False
