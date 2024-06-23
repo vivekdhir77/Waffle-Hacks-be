@@ -167,9 +167,11 @@ class LLM_PDF_Backend:
             print(type(model_output))
         return model_output
     
-    def getCheckWebsite(self, title):
+    def getCheckWebsite(self, url):
+        title = get_page_title(url)
         queries = [f"""Check if the given title is any relevant to the given context. If the context is in any way related to the title return True, else return False. Answer in Single word only.
                    Title: {title}"""]
+        
         embedded_queries = self.model.encode(queries)
         response = self.infer(queries, embedded_queries)
         try:

@@ -47,6 +47,7 @@ app.add_middleware(
 def hello_world():
     return {"status": "active"}
 
+global generativeAI
 auth = Authenticator(db)
 generativeAI = None  # Initialize generativeAI to None
 
@@ -190,15 +191,26 @@ async def validate_url(
     user = await verify_token(authorization)  # Verify token manually in this route
 
     userCollection = db["data"]
-    document = userCollection.find_one({"user_id": user["sub"]})
-    if document:
-        urls = document.get('urls', [])
+    cursor = userCollection.find({"user_id": user["sub"]})
+    data = await cursor.to_list(length=None) 
+    print(data)
+    serialized_data = [convert_mongodb_doc_to_dict(doc) for doc in data]
+    if serialized_data:
+        serialized_data[0]["specified_date"] = serialized_data[0]["specified_date"].strftime("%d-%m-%Y")
+    print(serialized_data)
+    # return True
+    # return True
+    generativeAIx = LLM_PDF_Backend(f"uploads/{data[0]['filename']}")
+    if data:
+        # urls = await data.get('urls', [])
+        # print(data)
+        urls = data[0]['urls']
         if url in urls:
             responseMsg = False
         else:
-            responseMsg = generativeAI.getCheckWebsite(url)
+            responseMsg = generativeAIx.getCheckWebsite(url)
     else:
-        responseMsg = generativeAI.getCheckWebsite(url)
+        responseMsg = generativeAIx.getCheckWebsite(url)
     return {"message": "URL validated successfully", "Response": responseMsg}
 
 
