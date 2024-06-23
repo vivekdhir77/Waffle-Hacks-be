@@ -1,6 +1,8 @@
 /crew/
 .env
+env/
 CV.pdf
 /uploads/
 /__pycache__/
 /waffle
+.DS_Store
