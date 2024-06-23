@@ -154,7 +154,7 @@ class LLM_PDF_Backend:
         for i, query_vec in enumerate(embedded_queries):
             similarities = cosine_similarity(query_vec[np.newaxis, :], self.embedded_data)
             print("similarities done")
-            top_indices = np.argsort(similarities[0])[::-1][:3]
+            top_indices = np.argsort(similarities[0])[::-1][:5]
             print("top_indices done")
             top_doct = [self.chunks[index] for index in top_indices]
             print("top_doct done")

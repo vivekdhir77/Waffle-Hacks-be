@@ -23,3 +23,10 @@ Our tech stack includes:
 - Backend: Python, FastAPI
 - Database: MongoDB
 - AI Integration: Gemini API
+
+# how to run
+
+- Create virtual environment
+- pip install -r requirements.txt
+- Fill in environment variables (GOOGLE_API_KEY, JWT_SECRET, JWT_EXPIRE_TIME & MongoDB_CONNECT)
+- > python3 main.py
