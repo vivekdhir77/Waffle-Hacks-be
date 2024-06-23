@@ -1,0 +1,5 @@
+[flake8]
+max-line-length = 150
+exclude = env
+
+# find . -name "*.py" -not -path "./env/*" -exec autopep8 --in-place --aggressive --aggressive {} \; 
