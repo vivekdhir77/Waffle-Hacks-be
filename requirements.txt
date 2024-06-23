@@ -8,3 +8,4 @@ python-dotenv
 python-multipart
 gunicorn
 PyPDF2
+bs4
