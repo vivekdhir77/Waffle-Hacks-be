@@ -10,6 +10,12 @@ import os
 import json
 from GeminiWrapper import LLM_PDF_Backend
 import ast
+import bson
+
+def convert_mongodb_doc_to_dict(doc):
+    if "_id" in doc:
+        doc["_id"] = str(doc["_id"])  # Convert ObjectId to string
+    return doc
 
 load_dotenv()
 mongodb_url = os.environ.get("MongoDB_CONNECT")
@@ -107,9 +113,9 @@ async def get_data(authorization: Optional[str] = Header(None)):
     user = await verify_token(authorization)  # Verify token manually in this route
     userCollection = db["data"]
     data = await userCollection.find({"user_id": user["sub"]}).to_list(length=100)
-
-    if data:
-        return {"data": data}
+    serialized_data = [convert_mongodb_doc_to_dict(doc) for doc in data]
+    if serialized_data:
+        return {"data": serialized_data}
     else:
         return {"message": "No data found"}
 
@@ -188,6 +194,18 @@ async def validate_url(
     url: str = Form(...),
     authorization: Optional[str] = Header(None)
 ):
-    
     user = await verify_token(authorization)  # Verify token manually in this route
-    return {"message": "URL validated successfully", "Response": user}
+
+    userCollection = db["data"]
+    document = userCollection.find_one({"user_id": user["sub"]})
+    if document:
+        urls = document.get('urls', [])
+        url_to_check = "http://example.com"
+        
+        if url_to_check in urls:
+            responseMsg = f"URL '{url_to_check}' exists in the 'urls' array."
+        else:
+            responseMsg = f"URL '{url_to_check}' does not exist in the 'urls' array."
+    else:
+        responseMsg = f"Document not found."
+    return {"message": "URL validated successfully", "Response": responseMsg}
