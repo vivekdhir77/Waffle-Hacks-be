@@ -11,6 +11,17 @@ import json
 from GeminiWrapper import LLM_PDF_Backend
 import ast
 import bson
+from pydantic import BaseModel
+from typing import List
+from datetime import datetime
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from typing import Optional
+from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
+
+
+class URLModel(BaseModel):
+    urls: List[str]
 
 def convert_mongodb_doc_to_dict(doc):
     if "_id" in doc:
@@ -23,6 +34,14 @@ client = AsyncIOMotorClient(mongodb_url)
 db = client.Waffle
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 @app.get("/t")
 def hello_world():
@@ -51,85 +70,59 @@ async def login(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
-@app.get("/getQnA")
+@app.get("/get-qna")
 async def get_qna(user: dict = Depends(verify_token)):
+
     global generativeAI
+    userCollection = db["data"]
+    data = await userCollection.find({"user_id": user["sub"]}).to_list(length=100)
+    serialized_data = [convert_mongodb_doc_to_dict(doc) for doc in data]
+    serialized_data[0]["specified_date"] = serialized_data[0]["specified_date"].strftime("%d-%m-%Y")
     if not generativeAI:
+        generativeAI = LLM_PDF_Backend(f"uploads/{serialized_data[0]['filename']}")
+        # generativeAI = LLM_PDF_Backend(f"uploads/cloudsek.pdf")
+        
+    print("filepath:", f"uploads/{serialized_data[0]['filename']}")
+
+    if not generativeAI:
+        print("No file has been uploaded to initialize the generative AI.")
         raise HTTPException(status_code=500, detail="No file has been uploaded to initialize the generative AI.")
     try:
-        question_answer_pairs = ast.literal_eval(generativeAI.getFlashCards())
-        return {"message": "QnA data retrieved successfully", "Response": question_answer_pairs}
+        question_answer_pairs = generativeAI.getFlashCards()
+        x = json.loads(question_answer_pairs)
+        y = json.dumps(x)
+        print(type(y))
+        z = eval(y)
+        print(type(z), type(z[0]))
+        print("question_answer_pairs:", z)
+        return {"message": "QnA data retrieved successfully", "response": z}
     except Exception as e:
+        print(f"Parsing Error from LLM: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Parsing Error from LLM: {str(e)}")
 
 @app.post("/upload")
 async def upload_file(
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),  # Make file optional
     date: str = Form(...),
     urls: str = Form(...),
-    authorization: Optional[str] = Header(None)
+    user: dict = Depends(verify_token)
 ):
-    global generativeAI
-    user = await verify_token(authorization)  # Verify token manually in this route
     userCollection = db["data"]
-
     try:
         parsed_date = datetime.strptime(date, "%d-%m-%Y")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use DD-MM-YYYY")
-
     try:
         urls_dict = json.loads(urls)
-        urls_list = urls_dict.get("urls", [])
+        print(urls_dict)
+        url_model = URLModel(**urls_dict)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid URL format")
 
-    file_location = f"uploads/{file.filename}"
-    with open(file_location, "wb+") as file_object:
-        file_object.write(file.file.read())
-
-    data = {
-        "user_id": user["sub"],
-        "filename": file.filename,
-        "file_path": file_location,
-        "upload_date": datetime.now(),
+    update_data = {
         "specified_date": parsed_date,
-        "urls": urls_list
+        "urls": url_model.urls
     }
-
-    fileExists = await userCollection.find_one({"$or": [{"file_path": file_location}, {"user_id": user["sub"]}]})
-    if fileExists:
-        raise HTTPException(status_code=500, detail="File already exists")
-
-    result = await userCollection.insert_one(data)
-    generativeAI = LLM_PDF_Backend(file_location)
-    if result.inserted_id:
-        return {"message": "File uploaded successfully", "user": user, "file_id": str(result.inserted_id)}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to upload file")
-
-@app.get("/data")
-async def get_data(authorization: Optional[str] = Header(None)):
-    user = await verify_token(authorization)  # Verify token manually in this route
-    userCollection = db["data"]
-    data = await userCollection.find({"user_id": user["sub"]}).to_list(length=100)
-    serialized_data = [convert_mongodb_doc_to_dict(doc) for doc in data]
-    if serialized_data:
-        return {"data": serialized_data}
-    else:
-        return {"message": "No data found"}
-
-@app.put("/data")
-async def update_data(
-    file: UploadFile = File(None),
-    date: str = Form(None),
-    urls: str = Form(None),
-    authorization: Optional[str] = Header(None)
-):
-    global generativeAI
-    user = await verify_token(authorization)  # Verify token manually in this route
-    userCollection = db["data"]
-    update_data = {}
 
     if file:
         file_location = f"uploads/{file.filename}"
@@ -137,36 +130,48 @@ async def update_data(
             file_object.write(file.file.read())
         update_data["filename"] = file.filename
         update_data["file_path"] = file_location
+        update_data["upload_date"] = datetime.now()
 
-    if date:
-        try:
-            parsed_date = datetime.strptime(date, "%d-%m-%Y")
-            update_data["specified_date"] = parsed_date
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use DD-MM-YYYY")
+    # Check if data exists for this user
+    existing_data = await userCollection.find_one({"user_id": user["sub"]})
 
-    if urls:
-        try:
-            urls_dict = json.loads(urls)
-            urls_list = urls_dict.get("urls", [])
-            update_data["urls"] = urls_list
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid URL format")
-
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No valid data provided for update")
-
-    result = await userCollection.update_one(
-        {"user_id": user["sub"]},
-        {"$set": update_data}
-    )
-    if result.modified_count == 1:
-        generativeAI = LLM_PDF_Backend(file_location)
-        return {"message": "Data updated successfully"}
+    if existing_data:
+        # Update existing data
+        result = await userCollection.update_one(
+            {"user_id": user["sub"]},
+            {"$set": update_data}
+        )
+        # generativeAI = LLM_PDF_Backend(file_location)
+        if result.modified_count == 1:
+            return {"message": "Data updated successfully", "user": user}
+        else:
+            raise HTTPException(status_code=400, detail="you have made no changes to the data")
     else:
-        raise HTTPException(status_code=404, detail="Data not found or no update made")
+        # Insert new data
+        update_data["user_id"] = user["sub"]
+        result = await userCollection.insert_one(update_data)
+        # generativeAI = LLM_PDF_Backend(file_location)
+        if result.inserted_id:
+            return {"message": "File uploaded successfully", "user": user, "file_id": str(result.inserted_id)}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to upload file")
 
-@app.delete("/data")
+@app.get("/get-data")
+async def get_data(authorization: Optional[str] = Header(None)):
+    global generativeAI
+    user = await verify_token(authorization)  # Verify token manually in this route
+    userCollection = db["data"]
+    data = await userCollection.find({"user_id": user["sub"]}).to_list(length=100)
+    serialized_data = [convert_mongodb_doc_to_dict(doc) for doc in data]
+    serialized_data[0]["specified_date"] = serialized_data[0]["specified_date"].strftime("%d-%m-%Y")
+    # if not generativeAI:
+    #     generativeAI = LLM_PDF_Backend(f"uploads/{serialized_data[0]['filename']}")
+    if serialized_data:
+        return {"data": serialized_data}
+    else:
+        return {"message": "No data found"}
+
+@app.delete("/delete-data")
 async def delete_data(authorization: Optional[str] = Header(None)):
     user = await verify_token(authorization)  # Verify token manually in this route
     userCollection = db["data"]
@@ -176,19 +181,7 @@ async def delete_data(authorization: Optional[str] = Header(None)):
     else:
         raise HTTPException(status_code=404, detail="Data not found")
 
-@app.post("/validateAnswer")
-async def validate_answer(
-    question: str = Form(...),
-    userAns: str = Form(...),
-    answer: str = Form(...),
-    authorization: Optional[str] = Header(None)
-):
-    global generativeAI
-    if not generativeAI:
-        raise HTTPException(status_code=500, detail="No file has been uploaded to initialize the generative AI.")
-    user = await verify_token(authorization)  # Verify token manually in this route
-    return {"message": "Answer validated successfully", "Response": generativeAI.validate(question, userAns)}
-
+# not using this at the moment except for youtube videos because we're checking the urls in frontend itself.
 @app.post("/validateURL")
 async def validate_url(
     url: str = Form(...),
@@ -207,3 +200,8 @@ async def validate_url(
     else:
         responseMsg = generativeAI.getCheckWebsite(url)
     return {"message": "URL validated successfully", "Response": responseMsg}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="localhost", port=8000)

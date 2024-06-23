@@ -11,10 +11,22 @@ from GeminiModel import GeminiModel
 import re
 import requests
 from bs4 import BeautifulSoup
+import re
 
 
 def cosine_similarity(a, b):
     return np.dot(a, b.T) / (np.linalg.norm(a, axis=1)[:, np.newaxis] * np.linalg.norm(b, axis=1))
+
+def clean_text1(text):
+    # Remove leading zeros in decimal numbers
+    text = re.sub(r'(\d)0+(\.\d+)', r'\1\2', text)
+    
+    # Add missing commas in large numbers (e.g., converting "1234567890" to "1,234,567,890")
+    text = re.sub(r'(\d)(?=(\d{3})+(?!\d))', r'\1,', text)
+    
+    # Add other cleaning rules as needed
+    
+    return text
 
 def pdf_to_string(file_path):
     pdf_file = open(file_path, 'rb')
@@ -23,7 +35,9 @@ def pdf_to_string(file_path):
     output = ''
 
     for page in pdf_reader.pages:
-        output += page.extract_text()
+        page_text = page.extract_text() or '' 
+        cleaned_page_text = clean_text1(page_text)
+        output += cleaned_page_text
 
     pdf_file.close()
     return output
@@ -128,19 +142,29 @@ class LLM_PDF_Backend:
             return False
     
     def getFlashCards(self):
-        queries = ["Generate three question and answer respectively from the given context such that answer is in a single word in the following format: [[Question 1, Answer 1], [Question 2, Answer 2], [Question 3, Answer 3]]"]
+        queries = ['Generate three question and answer respectively from the given context such that answer is in a single word in the json format: [{"question": "First generated question", "answer":"OneWordAnswer1}, {"question": "Second generated question", "answer":"OneWordAnswer2"}, {"question": "Third generated question", "answer": "OneWordAnswer2}] \n ask descriptive questions with answers in word not just number. ask one question with a number answer.']
         embedded_queries = self.model.encode(queries)
+        print("infer problem ey idhi")
         return self.infer(queries, embedded_queries)
     
     def infer(self, queries, embedded_queries):
         GOOGLE_API_KEY=os.getenv("GOOGLE_API_KEY")
-        Gemini = GeminiModel(api_key = GOOGLE_API_KEY, model_name = "gemini-1.0-pro")
+        Gemini = GeminiModel(api_key = GOOGLE_API_KEY, model_name = "gemini-1.5-flash")
+        print("ghemini loaded")
         for i, query_vec in enumerate(embedded_queries):
             similarities = cosine_similarity(query_vec[np.newaxis, :], self.embedded_data)
+            print("similarities done")
             top_indices = np.argsort(similarities[0])[::-1][:3]
+            print("top_indices done")
             top_doct = [self.chunks[index] for index in top_indices]
-            argumented_prompt = f"You are an expert question answering system, I'll give you question and context and you'll return the answer. Query : {queries[i]} Contexts : {top_doct[0]}"
+            print("top_doct done")
+            print(f"Query : {queries[i]} Contexts : {top_doct[0]}")
+            argumented_prompt = f"You are an expert question answering system, I will give you question and context and you will return the answer. Query : {queries[i]} Contexts : {top_doct[0]}"
             model_output = Gemini.generate_content(argumented_prompt)
+            model_output = model_output.replace("```json", "")
+            model_output = model_output.replace("```", "")
+            print("Gemini.generate_content done:", model_output)
+            print(type(model_output))
         return model_output
     
     def getCheckWebsite(self, title):
